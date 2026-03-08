@@ -1,398 +1,121 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import {
-  getFirestore,
-  collection,
-  onSnapshot,
-  doc,
-  setDoc,
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  setDoc, 
   deleteDoc,
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
+import { 
+  PhoneCall, 
+  Play, 
+  Split, 
+  LogOut, 
+  Plus, 
+  Settings2, 
+  Save, 
+  MousePointer2,
+  Trash2,
+  Zap,
+  Loader2,
+  ChevronRight,
+  Lock,
+  Cloud,
+  CloudOff,
+  ArrowLeft,
+  LayoutGrid,
+  FileCode,
+  Calendar,
+  ChevronRight as ChevronIcon,
+  WifiOff,
+  UploadCloud
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
-// --- ICONOS SVG INTEGRADOS (Minimalistas y consistentes) ---
-const Icon = ({ d, size = 20, className = '' }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={className}
-  >
-    <path d={d} />
-  </svg>
-);
+// --- CONFIGURACIÓN Y UTILIDADES ---
+function cn(...inputs) {
+  return twMerge(clsx(inputs));
+}
 
-const CalendarIcon = (p) => (
-  <Icon
-    {...p}
-    d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
-  />
-);
-const UsersIcon = (p) => (
-  <Icon
-    {...p}
-    d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"
-  />
-);
-const AlertIcon = (p) => (
-  <Icon
-    {...p}
-    d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01"
-  />
-);
-const TrashIcon = (p) => (
-  <Icon
-    {...p}
-    d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-  />
-);
-const CheckIcon = (p) => (
-  <Icon {...p} d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3" />
-);
-const PlusIcon = (p) => <Icon {...p} d="M12 5v14M5 12h14" />;
-const MapPinIcon = (p) => (
-  <Icon
-    {...p}
-    d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0ZM12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-  />
-);
-const LeftIcon = (p) => <Icon {...p} d="m15 18-6-6 6-6" />;
-const RightIcon = (p) => <Icon {...p} d="m9 18 6-6-6-6" />;
-const ListIcon = (p) => (
-  <Icon {...p} d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
-);
-const GridIcon = (p) => (
-  <Icon {...p} d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z" />
-);
-const CloudIcon = (p) => (
-  <Icon
-    {...p}
-    d="M17.5 19c2.5 0 4.5-2 4.5-4.5 0-2.4-1.9-4.3-4.3-4.5C16.9 6.8 13.7 4 10 4 6.7 4 4 6.7 4 10c-2.2.3-4 2.2-4 4.5C0 17 2 19 4.5 19"
-  />
-);
-const CloudOffIcon = (p) => (
-  <Icon
-    {...p}
-    d="m2 2 20 20M5.78 5.78l-.28.22C2.2 6.3 0 9.2 0 12.5 0 16.1 2.9 19 6.5 19h10.72M22.56 16.56A4.5 4.5 0 0 0 18 9c-.28 0-.56.03-.82.09C16.3 5.4 13.1 3 9.5 3c-.5 0-.98.05-1.44.15"
-  />
-);
-const LoaderIcon = (p) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={`animate-spin ${p.className}`}
-  >
-    <path d="M21 12a9 9 0 1 1-6.21-8.56" />
-  </svg>
-);
-const CalendarDaysIcon = (p) => (
-  <Icon
-    {...p}
-    d="M21 10H3M16 2v4M8 2v4M3 6h18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"
-  />
-);
-const LockIcon = (p) => (
-  <Icon
-    {...p}
-    d="M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2Z M7 11V7a5 5 0 0 1 10 0v4"
-  />
-);
-const LogOutIcon = (p) => (
-  <Icon
-    {...p}
-    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9"
-  />
-);
-const SettingsIcon = (p) => (
-  <Icon
-    {...p}
-    d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
-  />
-);
-const UserPlusIcon = (p) => (
-  <Icon
-    {...p}
-    d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M19 8v6 M22 11h-6"
-  />
-);
-const XIcon = (p) => <Icon {...p} d="M18 6 6 18 M6 6l12 12" />;
-
-// --- CONFIGURACIÓN BASE ---
-const FALLBACK_USERS = [
-  {
-    id: 'carlos',
-    name: 'Carlos',
-    totalDays: 24,
-    region: 'Asturias',
-    color: 'bg-indigo-600',
-    colorLight: 'bg-indigo-100',
-    text: 'text-indigo-700',
-  },
-  {
-    id: 'antonio',
-    name: 'Antonio',
-    totalDays: 24,
-    region: 'Madrid',
-    color: 'bg-emerald-600',
-    colorLight: 'bg-emerald-100',
-    text: 'text-emerald-700',
-  },
-  {
-    id: 'ricardo',
-    name: 'Ricardo',
-    totalDays: 24,
-    region: 'Granada',
-    color: 'bg-violet-600',
-    colorLight: 'bg-violet-100',
-    text: 'text-violet-700',
-  },
-];
-
-const TEAM_COLORS = [
-  { bg: 'bg-indigo-600', light: 'bg-indigo-100', text: 'text-indigo-700' },
-  { bg: 'bg-emerald-600', light: 'bg-emerald-100', text: 'text-emerald-700' },
-  { bg: 'bg-violet-600', light: 'bg-violet-100', text: 'text-violet-700' },
-  { bg: 'bg-amber-500', light: 'bg-amber-100', text: 'text-amber-700' },
-  { bg: 'bg-rose-500', light: 'bg-rose-100', text: 'text-rose-700' },
-  { bg: 'bg-cyan-600', light: 'bg-cyan-100', text: 'text-cyan-700' },
-  { bg: 'bg-blue-600', light: 'bg-blue-100', text: 'text-blue-700' },
-];
-
-const HOLIDAYS_2026 = {
-  Nacional: [
-    { date: '2026-01-01', name: 'Año Nuevo' },
-    { date: '2026-01-06', name: 'Epifanía' },
-    { date: '2026-04-03', name: 'Viernes Santo' },
-    { date: '2026-05-01', name: 'Trabajo' },
-    { date: '2026-08-15', name: 'Asunción' },
-    { date: '2026-10-12', name: 'Fiesta Nacional' },
-    { date: '2026-11-02', name: 'Todos los Santos' },
-    { date: '2026-12-07', name: 'Constitución' },
-    { date: '2026-12-08', name: 'Inmaculada' },
-    { date: '2026-12-25', name: 'Navidad' },
-  ],
-  Madrid: [
-    { date: '2026-04-02', name: 'Jueves Santo' },
-    { date: '2026-05-02', name: 'Comunidad' },
-    { date: '2026-05-15', name: 'San Isidro' },
-    { date: '2026-11-09', name: 'La Almudena' },
-  ],
-  Asturias: [
-    { date: '2026-04-02', name: 'Jueves Santo' },
-    { date: '2026-09-08', name: 'Día de Asturias' },
-  ],
-  Granada: [
-    { date: '2026-02-28', name: 'Día de Andalucía' },
-    { date: '2026-04-02', name: 'Jueves Santo' },
-    { date: '2026-05-26', name: 'Mariana Pineda' },
-    { date: '2026-06-04', name: 'Corpus Christi' },
-  ],
+const NODE_TYPES = {
+  START: 'start',
+  AUDIO: 'audio',
+  CHOICE: 'choice',
+  END: 'end'
 };
 
-// --- COMPONENTES UI ---
-// Función helper para extraer iniciales de un nombre
-const getInitials = (name) => {
-  return name.slice(0, 2).toUpperCase();
+const RAW_APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'callflow-architect-2026';
+const STABLE_APP_ID = RAW_APP_ID.replace(/\//g, '_');
+
+const getIconForType = (type) => {
+  switch (type) {
+    case NODE_TYPES.START: return Play;
+    case NODE_TYPES.AUDIO: return PhoneCall;
+    case NODE_TYPES.CHOICE: return Split;
+    case NODE_TYPES.END: return LogOut;
+    default: return Zap;
+  }
 };
 
-const CustomDatePicker = ({ label, value, onChange, userId, users }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(new Date(2026, 2, 1));
-
-  useEffect(() => {
-    if (value) setViewDate(new Date(value));
-  }, [value]);
-
-  const user = users.find((u) => u.id === userId);
-  const region = user?.region;
-  const monthNames = [
-    'Enero',
-    'Febrero',
-    'Marzo',
-    'Abril',
-    'Mayo',
-    'Junio',
-    'Julio',
-    'Agosto',
-    'Septiembre',
-    'Octubre',
-    'Noviembre',
-    'Diciembre',
-  ];
-
-  const renderDays = () => {
-    const year = viewDate.getFullYear();
-    const month = viewDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
-    let offset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
-
-    const days = [];
-    for (let i = 0; i < offset; i++) days.push(<div key={`e-${i}`} />);
-
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(
-        d
-      ).padStart(2, '0')}`;
-      const isNat = HOLIDAYS_2026.Nacional.find((h) => h.date === dateStr);
-      const isReg = region
-        ? HOLIDAYS_2026[region]?.find((h) => h.date === dateStr)
-        : null;
-      const isWeekend = [0, 6].includes(new Date(year, month, d).getDay());
-      const isSelected = value === dateStr;
-
-      let style = 'hover:bg-slate-100 text-slate-700';
-      if (isSelected) style = 'bg-slate-900 text-white font-bold shadow-sm';
-      else if (isNat)
-        style = 'bg-rose-50 text-rose-600 font-semibold border border-rose-100';
-      else if (isReg)
-        style =
-          'bg-amber-50 text-amber-700 font-semibold border border-amber-100';
-      else if (isWeekend) style = 'bg-slate-50 text-slate-400';
-
-      days.push(
-        <button
-          key={d}
-          type="button"
-          onClick={() => {
-            onChange(dateStr);
-            setIsOpen(false);
-          }}
-          className={`h-8 w-full rounded-md flex items-center justify-center text-xs transition-all ${style}`}
-          title={isNat?.name || isReg?.name || ''}
-        >
-          {d}
-        </button>
-      );
-    }
-    return days;
-  };
-
-  return (
-    <div className="relative">
-      <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-        {label}
-      </label>
-      <div
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full border border-slate-200 rounded-xl p-3.5 bg-slate-50/50 cursor-pointer flex justify-between items-center hover:bg-slate-50 hover:border-slate-300 transition-colors focus-within:ring-2 focus-within:ring-slate-200"
-      >
-        <span
-          className={
-            value
-              ? 'text-slate-900 text-sm font-medium'
-              : 'text-slate-400 text-sm'
-          }
-        >
-          {value
-            ? new Date(value).toLocaleDateString('es-ES')
-            : 'Seleccionar fecha'}
-        </span>
-        <CalendarIcon size={16} className="text-slate-400" />
-      </div>
-      {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          ></div>
-          <div className="absolute z-50 mt-2 bg-white border border-slate-200 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] rounded-2xl p-4 w-72 left-0 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-4">
-              <button
-                type="button"
-                onClick={() =>
-                  setViewDate(
-                    new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1)
-                  )
-                }
-                className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
-              >
-                <LeftIcon size={16} />
-              </button>
-              <span className="font-semibold text-sm text-slate-800">
-                {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setViewDate(
-                    new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1)
-                  )
-                }
-                className="p-1.5 hover:bg-slate-100 rounded-full transition-colors text-slate-500"
-              >
-                <RightIcon size={16} />
-              </button>
-            </div>
-            <div className="grid grid-cols-7 gap-1 text-[10px] font-semibold text-slate-400 text-center mb-2 uppercase tracking-wider">
-              {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((day) => (
-                <div key={day}>{day}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">{renderDays()}</div>
-          </div>
-        </>
-      )}
-    </div>
-  );
+const getNodeTheme = (type) => {
+  switch (type) {
+    case NODE_TYPES.START: return { bg: 'bg-emerald-500', light: 'bg-emerald-50', text: 'text-emerald-600', stroke: '#10b981' };
+    case NODE_TYPES.AUDIO: return { bg: 'bg-blue-500', light: 'bg-blue-50', text: 'text-blue-600', stroke: '#3b82f6' };
+    case NODE_TYPES.CHOICE: return { bg: 'bg-purple-500', light: 'bg-purple-50', text: 'text-purple-600', stroke: '#a855f7' };
+    case NODE_TYPES.END: return { bg: 'bg-rose-500', light: 'bg-rose-50', text: 'text-rose-600', stroke: '#f43f5e' };
+    default: return { bg: 'bg-slate-500', light: 'bg-slate-50', text: 'text-slate-600', stroke: '#64748b' };
+  }
 };
 
-// --- APP PRINCIPAL ---
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    () => localStorage.getItem('vacas_auth_pro') === 'true'
-  );
+  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('callflow_auth') === 'true');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-
   const [isReady, setIsReady] = useState(false);
-  const [sessionUser, setSessionUser] = useState(null);
+  const [user, setUser] = useState(null);
+  
+  const [flows, setFlows] = useState([]);
+  const [currentFlowId, setCurrentFlowId] = useState(null);
+  const [newFlowName, setNewFlowName] = useState('');
 
-  const [users, setUsers] = useState([]);
-  const [vacations, setVacations] = useState([]);
-
-  const [showTeamModal, setShowTeamModal] = useState(false);
-  const [newMemName, setNewMemName] = useState('');
-  const [newMemDays, setNewMemDays] = useState(24);
-  const [newMemRegion, setNewMemRegion] = useState('Nacional');
-
-  const [newUser, setNewUser] = useState('');
-  const [newStart, setNewStart] = useState('');
-  const [newEnd, setNewEnd] = useState('');
-  const [viewMode, setViewMode] = useState('calendar');
-  const [calUserFilter, setCalUserFilter] = useState('all');
-  const [msg, setMsg] = useState({ text: '', type: '' });
+  const [nodes, setNodes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  
+  const [activeNodeId, setActiveNodeId] = useState(null); 
+  const [connectingNode, setConnectingNode] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false); // Estado para mostrar feedback visual al guardar
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  
+  const canvasRef = useRef(null);
+  const dragState = useRef({
+    isDragging: false,
+    nodeId: null,
+    startX: 0,
+    startY: 0,
+    initialNodeX: 0,
+    initialNodeY: 0,
+    hasMoved: false 
+  });
+  
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const [db, setDb] = useState(null);
+  const [forcedOffline, setForcedOffline] = useState(() => localStorage.getItem('cf_forced_offline') === 'true');
   const [cloudActive, setCloudActive] = useState(false);
 
-  const STABLE_APP_ID = 'vacaciones-equipo-2026';
-
-  useEffect(() => {
-    if (users.length > 0 && !users.find((u) => u.id === newUser)) {
-      setNewUser(users[0].id);
-    }
-  }, [users, newUser]);
-
-  useEffect(() => {
-    if (calUserFilter !== 'all' && !users.find((u) => u.id === calUserFilter)) {
-      setCalUserFilter('all');
-    }
-  }, [users, calUserFilter]);
-
+  // 1. Inicialización
   useEffect(() => {
     const initProject = () => {
       if (!document.getElementById('tailwind-cdn')) {
@@ -401,7 +124,6 @@ export default function App() {
         script.src = 'https://cdn.tailwindcss.com';
         document.head.appendChild(script);
       }
-
       const checkTailwind = setInterval(() => {
         if (window.tailwind) {
           setIsReady(true);
@@ -411,962 +133,737 @@ export default function App() {
     };
     initProject();
 
-    let envConfig = {};
-    try {
-      envConfig = {
-        apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-        projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-        appId: import.meta.env.VITE_FIREBASE_APP_ID,
-        measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
-      };
-    } catch (e) {
-      // Ignorar
-    }
-
-    const firebaseConfig = {
-      apiKey: envConfig.apiKey,
-      authDomain: envConfig.authDomain,
-      projectId: envConfig.projectId,
-      storageBucket: envConfig.storageBucket,
-      messagingSenderId: envConfig.messagingSenderId,
-      appId: envConfig.appId,
-      measurementId: envConfig.measurementId,
-    };
-
-    try {
-      if (!firebaseConfig.apiKey) {
-        setCloudActive(false);
-        setSessionUser({ uid: 'local-admin' });
-
-        const savedVacations = localStorage.getItem('vacas_v_final_data_pro');
-        if (savedVacations) setVacations(JSON.parse(savedVacations));
-
-        const savedUsers = localStorage.getItem('vacas_team_pro');
-        if (savedUsers) setUsers(JSON.parse(savedUsers));
-        else setUsers(FALLBACK_USERS);
-      } else {
-        const fbApp =
-          getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-        const fbAuth = getAuth(fbApp);
-        const fbDb = getFirestore(fbApp);
-        setDb(fbDb);
-        setCloudActive(true);
-
-        signInAnonymously(fbAuth)
-          .then(() => onAuthStateChanged(fbAuth, setSessionUser))
-          .catch((e) => {
-            console.error('Error Auth Firebase:', e);
-          });
+    const initFirebase = async () => {
+      if (forcedOffline) {
+          setCloudActive(false);
+          setUser({ uid: 'local-admin' });
+          loadLocalFlows();
+          return;
       }
-    } catch (e) {
-      setCloudActive(false);
-      setSessionUser({ uid: 'local-admin' });
+
+      let envConfig = {};
+      try {
+        envConfig = {
+          apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+          projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          appId: import.meta.env.VITE_FIREBASE_APP_ID
+        };
+      } catch (e) {}
+
+      const firebaseConfig = envConfig.apiKey ? envConfig : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null);
+      
+      if (firebaseConfig && firebaseConfig.apiKey) {
+        try {
+          const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+          const auth = getAuth(app);
+          const firestore = getFirestore(app);
+          setDb(firestore);
+
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+              await signInAnonymously(auth);
+            }
+            setCloudActive(true);
+            onAuthStateChanged(auth, async (u) => {
+                if(u) {
+                    setUser(u);
+                    // Cargar datos desde la nube una vez al conectar
+                    await fetchCloudFlows(firestore);
+                } else {
+                    setUser({ uid: 'local-admin' });
+                    loadLocalFlows();
+                }
+            });
+          } catch (authErr) {
+            setCloudActive(false);
+            setUser({ uid: 'local-admin' });
+            loadLocalFlows();
+          }
+        } catch (e) {
+          setCloudActive(false);
+          setUser({ uid: 'local-admin' });
+          loadLocalFlows();
+        }
+      } else {
+        setCloudActive(false);
+        setUser({ uid: 'local-admin' });
+        loadLocalFlows();
+      }
+    };
+    
+    initFirebase();
+  }, [forcedOffline]);
+
+  // Funciones de carga inicial
+  const loadLocalFlows = () => {
+    const savedFlows = localStorage.getItem('cf_flows_list_v5');
+    if (savedFlows) setFlows(JSON.parse(savedFlows));
+  };
+
+  const fetchCloudFlows = async (firestoreDb) => {
+      try {
+          const flowsSnap = await getDocs(collection(firestoreDb, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows'));
+          const cloudFlows = flowsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setFlows(cloudFlows);
+          // Guardamos también en local como respaldo
+          localStorage.setItem('cf_flows_list_v5', JSON.stringify(cloudFlows));
+      } catch(e) {
+          console.warn("No se pudieron cargar flujos de la nube. Usando local.", e);
+          loadLocalFlows();
+          setCloudActive(false);
+      }
+  };
+
+  const toggleOfflineMode = () => {
+      const newOfflineState = !forcedOffline;
+      setForcedOffline(newOfflineState);
+      localStorage.setItem('cf_forced_offline', newOfflineState.toString());
+      if (!newOfflineState) {
+          window.location.reload();
+      } else {
+          setCloudActive(false);
+      }
+  };
+
+  // 3. Persistencia Local Constante (El estado principal es local)
+  useEffect(() => {
+    if (isReady && !dragState.current.isDragging) {
+      localStorage.setItem('cf_flows_list_v5', JSON.stringify(flows));
+      if (currentFlowId) {
+        localStorage.setItem(`cf_nodes_v5_${currentFlowId}`, JSON.stringify(nodes));
+        localStorage.setItem(`cf_conns_v5_${currentFlowId}`, JSON.stringify(connections));
+      }
     }
-  }, []);
+  }, [flows, nodes, connections, isReady, currentFlowId]);
+
+  // --- SINCRONIZACIÓN MANUAL CON LA NUBE ---
+  const syncToCloud = async () => {
+      if (!cloudActive || !db || forcedOffline) return;
+      
+      setIsSyncing(true);
+      try {
+          // 1. Guardar la lista de flujos (solo metadatos, no nodos internos)
+          // Optimizamos para no reescribir todos si no es necesario, pero como es manual, aseguramos
+          for (const flow of flows) {
+              await setDoc(doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', flow.id), {
+                  name: flow.name,
+                  createdAt: flow.createdAt
+              });
+          }
+
+          // 2. Si estamos dentro de un flujo, guardamos sus nodos y conexiones
+          if (currentFlowId) {
+              // Limpiar nodos viejos en la nube (opcional, pero buena práctica si se eliminaron localmente)
+              // Por simplicidad, sobrescribimos los actuales
+              for (const node of nodes) {
+                   await setDoc(doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', currentFlowId, 'nodes', node.id), node);
+              }
+              for (const conn of connections) {
+                   await setDoc(doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', currentFlowId, 'connections', conn.id), conn);
+              }
+          }
+          
+          setHasUnsavedChanges(false);
+      } catch (e) {
+          console.error("Error al sincronizar con la nube:", e);
+          setCloudActive(false);
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
+  // Marcamos cambios no guardados cuando el usuario modifica algo
+  useEffect(() => {
+      if(isReady && nodes.length > 0) {
+          setHasUnsavedChanges(true);
+      }
+  }, [nodes, connections, flows]);
+
+
+  // --- MOTOR DE ARRASTRE DE ALTO RENDIMIENTO (Solo Local) ---
+  const handlePointerDown = useCallback((e, nodeId) => {
+    if (e.button !== 0 && e.type !== 'touchstart') return; 
+    e.stopPropagation();
+    
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    
+    const node = nodes.find(n => n.id === nodeId);
+    if (!node) return;
+
+    setActiveNodeId(nodeId);
+
+    dragState.current = {
+      isDragging: true,
+      nodeId: nodeId,
+      startX: clientX,
+      startY: clientY,
+      initialNodeX: node.x,
+      initialNodeY: node.y,
+      hasMoved: false
+    };
+    
+    document.body.style.cursor = 'grabbing';
+  }, [nodes]);
+
+  const handlePointerMove = useCallback((e) => {
+    if (connectingNode && canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        setMousePos({ 
+            x: clientX - rect.left, 
+            y: clientY - rect.top 
+        });
+        return;
+    }
+
+    if (!dragState.current.isDragging) return;
+    
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+    const deltaX = clientX - dragState.current.startX;
+    const deltaY = clientY - dragState.current.startY;
+
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+      dragState.current.hasMoved = true;
+    }
+
+    setNodes(prev => prev.map(n => {
+        if (n.id === dragState.current.nodeId) {
+            return {
+                ...n,
+                x: Math.max(0, dragState.current.initialNodeX + deltaX),
+                y: Math.max(0, dragState.current.initialNodeY + deltaY)
+            };
+        }
+        return n;
+    }));
+  }, [connectingNode]);
+
+  const handlePointerUp = useCallback(() => {
+    document.body.style.cursor = 'default';
+    
+    if (connectingNode) {
+        setConnectingNode(null);
+    }
+
+    if (dragState.current.isDragging) {
+      const hasMoved = dragState.current.hasMoved;
+      dragState.current.isDragging = false;
+      dragState.current.nodeId = null;
+
+      if (hasMoved) {
+        setHasUnsavedChanges(true);
+        // Todo se guarda en localStorage mediante el useEffect general
+      }
+    }
+  }, [connectingNode]);
 
   useEffect(() => {
-    if (!sessionUser || !cloudActive || !db) return;
+    const handleGlobalUp = () => handlePointerUp();
+    const handleGlobalMove = (e) => handlePointerMove(e);
 
-    const pathVacs = collection(
-      db,
-      'artifacts',
-      STABLE_APP_ID,
-      'public',
-      'data',
-      'vacaciones'
-    );
-    const unsubscribeVacs = onSnapshot(
-      pathVacs,
-      (snapshot) => {
-        setVacations(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-      },
-      (e) => console.error(e)
-    );
-
-    const pathTeam = collection(
-      db,
-      'artifacts',
-      STABLE_APP_ID,
-      'public',
-      'data',
-      'team'
-    );
-    const unsubscribeTeam = onSnapshot(
-      pathTeam,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          setUsers(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-        } else {
-          FALLBACK_USERS.forEach((u) => {
-            setDoc(
-              doc(
-                db,
-                'artifacts',
-                STABLE_APP_ID,
-                'public',
-                'data',
-                'team',
-                u.id
-              ),
-              u
-            );
-          });
-        }
-      },
-      (e) => console.error(e)
-    );
+    window.addEventListener('mouseup', handleGlobalUp);
+    window.addEventListener('mousemove', handleGlobalMove);
+    window.addEventListener('touchend', handleGlobalUp);
+    window.addEventListener('touchmove', handleGlobalMove, { passive: false });
 
     return () => {
-      unsubscribeVacs();
-      unsubscribeTeam();
+      window.removeEventListener('mouseup', handleGlobalUp);
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalUp);
+      window.removeEventListener('touchmove', handleGlobalMove);
     };
-  }, [sessionUser, cloudActive, db]);
+  }, [handlePointerUp, handlePointerMove]);
 
-  useEffect(() => {
-    if (!cloudActive) {
-      localStorage.setItem('vacas_v_final_data_pro', JSON.stringify(vacations));
-      localStorage.setItem('vacas_team_pro', JSON.stringify(users));
-    }
-  }, [vacations, users, cloudActive]);
+  // --- Handlers de Gestión de Flujos y Nodos (Operan en Local) ---
+  const createFlow = async (e) => {
+    e.preventDefault();
+    if (!newFlowName.trim()) return;
+    const flowId = crypto.randomUUID(); 
+    const flowData = { name: newFlowName, createdAt: new Date().toISOString() };
+    const startNodeId = crypto.randomUUID(); 
 
-  const userBalances = useMemo(() => {
-    return users.map((u) => {
-      const used = vacations
-        .filter((v) => v.userId === u.id)
-        .reduce((sum, v) => sum + v.days, 0);
-      return { ...u, used, remaining: u.totalDays - used };
-    });
-  }, [vacations, users]);
-
-  const calculateDays = (start, end, uid) => {
-    let count = 0;
-    let curr = new Date(start);
-    const stop = new Date(end);
-    const reg = users.find((u) => u.id === uid)?.region || 'Nacional';
-    const holidays = [
-      ...HOLIDAYS_2026.Nacional,
-      ...(HOLIDAYS_2026[reg] || []),
-    ].map((h) => h.date);
-    while (curr <= stop) {
-      const dStr = curr.toISOString().split('T')[0];
-      if (![0, 6].includes(curr.getDay()) && !holidays.includes(dStr)) count++;
-      curr.setDate(curr.getDate() + 1);
-    }
-    return count;
+    setFlows(prev => [...prev, { id: flowId, ...flowData }]);
+    setNodes([{ id: startNodeId, type: NODE_TYPES.START, x: 100, y: 150, data: { label: 'Inicio' } }]);
+    setConnections([]);
+    
+    setNewFlowName('');
+    setCurrentFlowId(flowId);
+    setHasUnsavedChanges(true);
   };
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    if (!newStart || !newEnd)
-      return setMsg({
-        text: 'Por favor, selecciona las fechas.',
-        type: 'error',
-      });
-    const days = calculateDays(newStart, newEnd, newUser);
-    if (days <= 0)
-      return setMsg({
-        text: 'El rango no contiene días laborables válidos.',
-        type: 'error',
-      });
-    const bal = userBalances.find((u) => u.id === newUser);
-    if (bal.remaining < days)
-      return setMsg({
-        text: 'Días insuficientes en el balance.',
-        type: 'error',
-      });
+  const deleteFlow = async (e, flowId) => {
+    e.stopPropagation();
+    
+    setFlows(prev => prev.filter(f => f.id !== flowId));
+    localStorage.removeItem(`cf_nodes_v5_${flowId}`);
+    localStorage.removeItem(`cf_conns_v5_${flowId}`);
+    if (currentFlowId === flowId) setCurrentFlowId(null);
+    
+    if (cloudActive && db && !forcedOffline) {
+        try { await deleteDoc(doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', flowId)); } catch(e){}
+    }
+  };
 
-    const entry = {
-      userId: newUser,
-      userName: bal.name,
-      startDate: newStart,
-      endDate: newEnd,
-      days,
-      status: 'Aprobado',
-    };
+  const selectFlow = async (flowId) => {
+    // 1. Intentar cargar de local
+    const snodes = localStorage.getItem(`cf_nodes_v5_${flowId}`);
+    const sconns = localStorage.getItem(`cf_conns_v5_${flowId}`);
+    
+    let loadedNodes = [];
+    let loadedConns = [];
 
-    if (cloudActive && db) {
-      try {
-        const docRef = doc(
-          collection(
-            db,
-            'artifacts',
-            STABLE_APP_ID,
-            'public',
-            'data',
-            'vacaciones'
-          )
-        );
-        await setDoc(docRef, entry);
-        setMsg({ text: 'Registro guardado exitosamente.', type: 'success' });
-      } catch (err) {
-        setMsg({
-          text: 'Error de permisos en la base de datos.',
-          type: 'error',
-        });
+    if (snodes) {
+        loadedNodes = JSON.parse(snodes);
+        loadedConns = sconns ? JSON.parse(sconns) : [];
+    } 
+    // 2. Si no hay en local, intentar de la nube (si está conectada)
+    else if (cloudActive && db && !forcedOffline) {
+        try {
+            const nSnap = await getDocs(collection(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', flowId, 'nodes'));
+            loadedNodes = nSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            const cSnap = await getDocs(collection(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', flowId, 'connections'));
+            loadedConns = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch(e) {}
+    }
+
+    // 3. Fallback final
+    if (loadedNodes.length === 0) {
+        loadedNodes = [{ id: crypto.randomUUID(), type: NODE_TYPES.START, x: 100, y: 150, data: { label: 'Inicio' } }];
+    }
+
+    setNodes(loadedNodes);
+    setConnections(loadedConns);
+    setCurrentFlowId(flowId);
+    setActiveNodeId(null);
+    setHasUnsavedChanges(false); // Recién cargado
+  };
+
+  const addNode = (type) => {
+    const id = crypto.randomUUID(); 
+    const startX = 350 + (Math.random() * 50);
+    const startY = 200 + (Math.random() * 50);
+    
+    const newNode = { id, type, x: startX, y: startY, data: { label: `Bloque ${type}` } };
+    
+    setNodes(prev => [...prev, newNode]);
+    setActiveNodeId(id);
+    setHasUnsavedChanges(true);
+  };
+
+  const startConnection = (e, nodeId) => {
+    e.stopPropagation();
+    setConnectingNode(nodeId);
+    
+    if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        setMousePos({ x: clientX - rect.left, y: clientY - rect.top });
+    }
+  };
+
+  const finalizeConnection = (e, targetId) => {
+    e.stopPropagation();
+    if (connectingNode && connectingNode !== targetId) {
+      const exists = connections.find(c => c.from === connectingNode && c.to === targetId);
+      if (!exists) {
+          const connId = `${connectingNode}-${targetId}`;
+          const newConn = { id: connId, from: connectingNode, to: targetId };
+          setConnections(prev => [...prev, newConn]);
+          setHasUnsavedChanges(true);
       }
-    } else {
-      setVacations((prev) => [
-        ...prev,
-        { ...entry, id: Date.now().toString() },
-      ]);
-      setMsg({ text: 'Guardado en modo local.', type: 'success' });
     }
-    setNewStart('');
-    setNewEnd('');
-    setCalUserFilter(newUser);
-    setTimeout(() => setMsg({ text: '', type: '' }), 4000);
+    setConnectingNode(null);
   };
 
-  const removeVaca = async (id) => {
-    if (cloudActive && db)
-      await deleteDoc(
-        doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'vacaciones', id)
-      );
-    else setVacations((prev) => prev.filter((v) => v.id !== id));
-  };
+  const deleteSelection = async () => {
+    if (!activeNodeId) return;
+    
+    setNodes(prev => prev.filter(n => n.id !== activeNodeId));
+    setConnections(prev => prev.filter(c => c.from !== activeNodeId && c.to !== activeNodeId));
+    setActiveNodeId(null);
+    setHasUnsavedChanges(true);
 
-  const handleAddMember = async (e) => {
-    e.preventDefault();
-    if (!newMemName) return;
-
-    const newId =
-      newMemName.toLowerCase().replace(/[^a-z0-9]/g, '-') +
-      '-' +
-      Date.now().toString().slice(-4);
-    const colorConf = TEAM_COLORS[users.length % TEAM_COLORS.length];
-
-    const newMember = {
-      id: newId,
-      name: newMemName,
-      totalDays: parseInt(newMemDays),
-      region: newMemRegion,
-      color: colorConf.bg,
-      colorLight: colorConf.light,
-      text: colorConf.text,
-    };
-
-    if (cloudActive && db) {
-      await setDoc(
-        doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'team', newId),
-        newMember
-      );
-    } else {
-      setUsers((prev) => [...prev, newMember]);
-    }
-
-    setNewMemName('');
-    setNewMemDays(24);
-    setNewMemRegion('Nacional');
-  };
-
-  const handleRemoveMember = async (id) => {
-    if (users.length <= 1) return;
-    if (cloudActive && db) {
-      await deleteDoc(
-        doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'team', id)
-      );
-    } else {
-      setUsers((prev) => prev.filter((u) => u.id !== id));
+    if (cloudActive && db && !forcedOffline && currentFlowId) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', STABLE_APP_ID, 'public', 'data', 'flows', currentFlowId, 'nodes', activeNodeId));
+      } catch (e) {}
     }
   };
 
   const handleLogin = (e) => {
     e.preventDefault();
-    if (password === 'equipo2026') {
+    if (password === 'callflow2026') {
       setIsLoggedIn(true);
-      localStorage.setItem('vacas_auth_pro', 'true');
-      setLoginError('');
-    } else {
-      setLoginError('Contraseña incorrecta. Inténtalo de nuevo.');
-    }
+      localStorage.setItem('callflow_auth', 'true');
+    } else setLoginError('Clave incorrecta');
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setPassword('');
-    localStorage.removeItem('vacas_auth_pro');
-  };
+  if (!isReady) return (
+    <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-[9999]">
+      <Loader2 className="text-indigo-600 animate-spin mb-4" size={40} />
+      <p className="text-slate-400 font-bold animate-pulse uppercase text-xs tracking-widest text-center">
+        Motor de Alto Rendimiento...<br/><span className="text-[10px] opacity-50 font-medium">Iniciando Architect Pro</span>
+      </p>
+    </div>
+  );
 
-  const handleUserCardClick = (userId) => {
-    setCalUserFilter(userId);
-    setViewMode('calendar');
-  };
-
-  const renderCalendarView = () => {
-    const months = [
-      'Enero',
-      'Febrero',
-      'Marzo',
-      'Abril',
-      'Mayo',
-      'Junio',
-      'Julio',
-      'Agosto',
-      'Septiembre',
-      'Octubre',
-      'Noviembre',
-      'Diciembre',
-    ];
-    return (
-      <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Visor de Calendario
-          </span>
-          <select
-            value={calUserFilter}
-            onChange={(e) => setCalUserFilter(e.target.value)}
-            className="text-sm bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 outline-none font-medium text-slate-800 cursor-pointer focus:ring-2 focus:ring-slate-200 transition-all"
-          >
-            <option value="all">Todo el equipo</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+  if (!isLoggedIn) return (
+    <div className="min-h-screen bg-[#f1f5f9] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-200 w-full max-w-sm text-center">
+        <div className="bg-slate-900 w-20 h-20 rounded-3xl flex items-center justify-center text-white mx-auto mb-8 shadow-xl">
+          <Lock size={36} />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {months.map((mName, mIdx) => {
-            const daysInMonth = new Date(2026, mIdx + 1, 0).getDate();
-            const first = new Date(2026, mIdx, 1).getDay();
-            let offset = first === 0 ? 6 : first - 1;
-            const grid = [];
-            for (let i = 0; i < offset; i++)
-              grid.push(<div key={`off-${i}`} />);
-            for (let d = 1; d <= daysInMonth; d++) {
-              const dStr = `2026-${String(mIdx + 1).padStart(2, '0')}-${String(
-                d
-              ).padStart(2, '0')}`;
-              const isToday = dStr === '2026-03-08';
-              const isSun = new Date(2026, mIdx, d).getDay() === 0;
-              const isNat = HOLIDAYS_2026.Nacional.some((h) => h.date === dStr);
-              const activeVacs = vacations.filter(
-                (v) => dStr >= v.startDate && dStr <= v.endDate
-              );
-              const userOnVaca = activeVacs.find(
-                (v) => v.userId === calUserFilter
-              );
+        <h1 className="text-3xl font-black text-slate-900 mb-2 tracking-tighter uppercase italic">Architect</h1>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Clave compartida" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-center outline-none focus:border-indigo-500 transition-all font-bold" />
+          {loginError && <p className="text-rose-500 text-xs font-bold">{loginError}</p>}
+          <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-800 transition-all active:scale-95 shadow-xl">Desbloquear</button>
+        </form>
+      </motion.div>
+    </div>
+  );
 
-              let cellStyle = 'text-slate-600';
-              if (isSun || isNat)
-                cellStyle =
-                  'text-rose-500 font-semibold bg-rose-50/50 rounded-md';
-              let bg = '';
-              if (calUserFilter !== 'all' && userOnVaca)
-                bg = `${
-                  users.find((u) => u.id === calUserFilter)?.color
-                } rounded-md shadow-sm`;
-              else if (isToday)
-                bg = 'ring-2 ring-slate-900 ring-inset rounded-md';
-
-              grid.push(
-                <div
-                  key={d}
-                  className={`h-9 flex flex-col items-center justify-center relative transition-all ${bg} ${
-                    bg && calUserFilter !== 'all' ? 'text-white' : ''
-                  }`}
-                >
-                  <span
-                    className={`text-xs ${cellStyle} ${
-                      bg && calUserFilter !== 'all' ? 'text-white' : ''
-                    }`}
-                  >
-                    {d}
-                  </span>
-                  {calUserFilter === 'all' && activeVacs.length > 0 && (
-                    <div className="flex gap-0.5 absolute bottom-1">
-                      {activeVacs.map((v) => {
-                        const uColor =
-                          users.find((u) => u.id === v.userId)?.color ||
-                          'bg-slate-400';
-                        return (
-                          <div
-                            key={`${v.id}-${v.userId}`}
-                            className={`w-1.5 h-1.5 rounded-full ${uColor}`}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            return (
-              <div
-                key={mName}
-                className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow"
-              >
-                <div className="bg-slate-50 py-3 text-center text-xs font-semibold border-b border-slate-100 uppercase tracking-widest text-slate-500">
-                  {mName}
-                </div>
-                <div className="p-4 flex-1">
-                  <div className="grid grid-cols-7 gap-1 text-[10px] font-semibold text-slate-400 text-center mb-2 uppercase">
-                    {['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'].map((h) => (
-                      <div key={h}>{h}</div>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">{grid}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  if (!isReady)
-    return (
-      <div className="fixed inset-0 bg-slate-50 flex flex-col items-center justify-center z-[9999]">
-        <LoaderIcon className="text-slate-900 mb-4" size={32} />
-        <p className="text-slate-500 font-medium text-sm tracking-wide animate-pulse">
-          Cargando entorno...
-        </p>
-      </div>
-    );
-
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center p-4 font-sans">
-        <div className="bg-white p-10 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200 w-full max-w-sm animate-in zoom-in-95 duration-500">
-          <div className="flex flex-col items-center text-center mb-8">
-            <div className="bg-slate-900 p-4 rounded-2xl mb-6 shadow-lg">
-              <LockIcon className="text-white" size={28} />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              Portal del Equipo
+  // --- DASHBOARD ---
+  if (!currentFlowId) return (
+    <div className="min-h-screen bg-[#f8fafc] p-8">
+      <div className="max-w-6xl mx-auto">
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+          <div>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3 italic uppercase">
+              <div className="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-lg rotate-3"><LayoutGrid size={28} /></div>
+              Callflows
             </h1>
-            <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-              Inicia sesión con la clave compartida para gestionar las
-              vacaciones.
+            <p className="text-slate-500 font-medium mt-2 flex items-center gap-2">
+              {forcedOffline ? (
+                <span className="flex items-center gap-2 text-rose-500"><WifiOff size={14} /> Modo Offline Forzado</span>
+              ) : cloudActive ? (
+                <span className="flex items-center gap-2 text-emerald-500"><Cloud size={14} /> Listo para Sincronizar</span>
+              ) : (
+                <span className="flex items-center gap-2 text-amber-500"><CloudOff size={14} /> Modo Local Únicamente</span>
+              )}
             </p>
           </div>
-
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Contraseña de acceso"
-                className="w-full border border-slate-200 rounded-xl p-3.5 text-center text-sm font-medium text-slate-800 outline-none focus:bg-slate-50 focus:border-slate-400 focus:ring-4 focus:ring-slate-100 transition-all placeholder:text-slate-400"
-              />
-              {loginError && (
-                <p className="text-rose-500 text-xs font-medium text-center mt-3 animate-in slide-in-from-top-1">
-                  {loginError}
-                </p>
-              )}
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-slate-800 transition-all shadow-md active:scale-[0.98]"
+          <div className="flex items-center gap-4">
+            <button 
+                onClick={toggleOfflineMode}
+                className={cn(
+                    "p-3 rounded-2xl transition-all shadow-sm border",
+                    forcedOffline 
+                        ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100" 
+                        : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50 hover:text-slate-600"
+                )}
+                title={forcedOffline ? "Reconectar a la nube" : "Forzar modo offline"}
             >
-              Acceder al panel
+                {forcedOffline ? <WifiOff size={20} /> : <CloudOff size={20} />}
             </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 selection:bg-slate-200">
-      {/* MODAL DE EQUIPO */}
-      {showTeamModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-              <h2 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-3">
-                <div className="p-2 bg-slate-100 rounded-lg">
-                  <UsersIcon size={18} className="text-slate-700" />
-                </div>
-                Gestión de Miembros
-              </h2>
-              <button
-                onClick={() => setShowTeamModal(false)}
-                className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-700"
-              >
-                <XIcon size={20} />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto flex-1 space-y-8 bg-slate-50/50">
-              <form
-                onSubmit={handleAddMember}
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
-              >
-                <h3 className="text-sm font-semibold text-slate-800 mb-4">
-                  Añadir nuevo integrante
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                      Nombre completo
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Ej. Marta"
-                      value={newMemName}
-                      onChange={(e) => setNewMemName(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                      Días anuales
-                    </label>
-                    <input
-                      required
-                      type="number"
-                      min="1"
-                      value={newMemDays}
-                      onChange={(e) => setNewMemDays(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                      Región (Festivos)
-                    </label>
-                    <select
-                      value={newMemRegion}
-                      onChange={(e) => setNewMemRegion(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all bg-white"
-                    >
-                      {Object.keys(HOLIDAYS_2026).map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="mt-5 w-full bg-slate-900 text-white py-2.5 rounded-lg font-medium text-sm hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <UserPlusIcon size={16} /> Confirmar alta
-                </button>
-              </form>
-
-              <div>
-                <h3 className="text-sm font-semibold text-slate-800 mb-3">
-                  Directorio actual ({users.length})
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {users.map((u) => (
-                    <div
-                      key={u.id}
-                      className="flex items-center justify-between bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm hover:border-slate-300 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${u.color} shadow-sm`}
-                        >
-                          {getInitials(u.name)}
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm text-slate-900 leading-tight">
-                            {u.name}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {u.region} · {u.totalDays} d.
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveMember(u.id)}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-md hover:bg-rose-50 transition-colors"
-                        title="Dar de baja"
-                      >
-                        <TrashIcon size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* NAVEGACIÓN SUPERIOR */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-900 p-2 rounded-lg">
-              <CalendarIcon className="text-white" size={20} />
-            </div>
-            <h1 className="text-lg font-bold text-slate-900 tracking-tight hidden sm:block">
-              Planificador
-            </h1>
-
-            <div className="hidden sm:flex items-center ml-4 pl-4 border-l border-slate-200">
-              {cloudActive ? (
-                <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
-                  <CloudIcon size={12} /> Sincronizado
-                </span>
-              ) : (
-                <span className="flex items-center gap-1.5 text-[11px] font-medium text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-100">
-                  <CloudOffIcon size={12} /> Modo Local
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowTeamModal(true)}
-              className="flex items-center gap-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium"
-            >
-              <SettingsIcon size={16} />{' '}
-              <span className="hidden sm:inline">Equipo</span>
-            </button>
-            <div className="w-px h-5 bg-slate-200"></div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 px-3 py-1.5 rounded-lg transition-colors text-sm font-medium"
-            >
-              <LogOutIcon size={16} />{' '}
-              <span className="hidden sm:inline">Salir</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* TARJETAS DE RESUMEN */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {userBalances.map((u) => (
-            <div
-              key={u.id}
-              onClick={() => handleUserCardClick(u.id)}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] cursor-pointer hover:border-slate-300 hover:shadow-md transition-all group flex flex-col justify-between h-full"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-inner ${u.color}`}
-                  >
-                    {getInitials(u.name)}
-                  </div>
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900 leading-tight group-hover:text-indigo-600 transition-colors">
-                      {u.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">{u.region}</p>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div className="flex items-end justify-between mb-2">
-                  <div className="text-3xl font-bold text-slate-900 tracking-tight leading-none">
-                    {u.remaining}
-                  </div>
-                  <div className="text-xs font-medium text-slate-500 mb-1">
-                    días libres
-                  </div>
-                </div>
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                  <div
-                    className={`${u.color} h-full rounded-full transition-all duration-1000 ease-out`}
-                    style={{ width: `${(u.used / u.totalDays) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pb-20">
-          {/* PANEL IZQUIERDO: FORMULARIO */}
-          <section className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] lg:sticky lg:top-24">
-            <h2 className="text-sm font-bold text-slate-800 mb-5 flex items-center gap-2">
-              <PlusIcon size={18} className="text-slate-400" /> Nuevo Registro
-            </h2>
-
-            {msg.text && (
-              <div
-                className={`p-3 rounded-xl text-xs font-medium flex items-center gap-2 mb-5 animate-in slide-in-from-top-2 border ${
-                  msg.type === 'error'
-                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                }`}
-              >
-                {msg.type === 'error' ? (
-                  <AlertIcon size={16} />
-                ) : (
-                  <CheckIcon size={16} />
-                )}{' '}
-                {msg.text}
-              </div>
-            )}
-
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                  Miembro del equipo
-                </label>
-                <select
-                  value={newUser}
-                  onChange={(e) => setNewUser(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl p-3 bg-slate-50/50 text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all cursor-pointer"
-                >
-                  {users.length === 0 && (
-                    <option value="">No hay miembros...</option>
-                  )}
-                  {users.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <CustomDatePicker
-                label="Inicio de vacaciones"
-                value={newStart}
-                onChange={setNewStart}
-                userId={newUser}
-                users={users}
+            <form onSubmit={createFlow} className="flex items-center gap-3 bg-white p-2 rounded-3xl shadow-xl border border-slate-100 w-full md:w-auto">
+              <input 
+                type="text" 
+                value={newFlowName} 
+                onChange={e => setNewFlowName(e.target.value)}
+                placeholder="Nombre del nuevo árbol..." 
+                className="flex-1 md:w-64 bg-transparent px-4 py-2 outline-none font-bold text-slate-700"
               />
-              <CustomDatePicker
-                label="Fin de vacaciones"
-                value={newEnd}
-                onChange={setNewEnd}
-                userId={newUser}
-                users={users}
-              />
-
-              <button
-                type="submit"
-                disabled={users.length === 0}
-                className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-slate-800 transition-all shadow-md active:scale-[0.98] mt-2 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                Guardar fechas
+              <button type="submit" className="bg-indigo-600 text-white p-2.5 rounded-2xl hover:bg-indigo-700 transition-colors shadow-md">
+                <Plus size={20} />
               </button>
             </form>
-          </section>
+          </div>
+        </header>
 
-          {/* PANEL DERECHO: VISTAS DE DATOS */}
-          <section className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] overflow-hidden min-h-[500px] flex flex-col">
-            {/* Controles Segmentados (Estilo macOS) */}
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-800">
-                Visualización
-              </h2>
-              <div className="flex bg-slate-200/60 p-1 rounded-lg">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                    viewMode === 'list'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <ListIcon size={14} /> Lista
-                </button>
-                <button
-                  onClick={() => setViewMode('gantt')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                    viewMode === 'gantt'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <CalendarDaysIcon size={14} /> Gantt
-                </button>
-                <button
-                  onClick={() => setViewMode('calendar')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
-                    viewMode === 'calendar'
-                      ? 'bg-white text-slate-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <GridIcon size={14} /> Calendario
-                </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          <AnimatePresence>
+            {flows.map((flow) => (
+              <motion.div 
+                key={flow.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -8 }}
+                onClick={() => selectFlow(flow.id)}
+                className="group relative bg-white p-8 rounded-[3rem] shadow-xl border-2 border-transparent hover:border-indigo-500 cursor-pointer transition-all duration-300"
+              >
+                <div className="flex justify-between items-start mb-8">
+                  <div className="bg-indigo-50 p-4 rounded-3xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-300">
+                    <FileCode size={28} />
+                  </div>
+                  <button 
+                    onClick={(e) => deleteFlow(e, flow.id)}
+                    className="p-3 text-slate-200 hover:text-rose-500 hover:bg-rose-50 rounded-2xl transition-all"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+                <h3 className="text-2xl font-black text-slate-800 mb-2 truncate">{flow.name}</h3>
+                <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                  <Calendar size={12} />
+                  {new Date(flow.createdAt).toLocaleDateString()}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+
+  // --- EDITOR ---
+  return (
+    <div className="h-screen w-full flex bg-[#f8fafc] overflow-hidden font-sans selection:bg-indigo-100 select-none">
+      <motion.aside animate={{ width: sidebarOpen ? 320 : 0 }} className="bg-white border-r border-slate-200 flex flex-col shadow-2xl z-30 relative overflow-hidden shrink-0">
+        <div className="p-8 min-w-[320px] h-full flex flex-col">
+          <div className="flex items-center gap-4 mb-12">
+            <button onClick={() => setCurrentFlowId(null)} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 hover:text-indigo-600 transition-colors shadow-sm">
+              <ArrowLeft size={20} />
+            </button>
+            <h1 className="text-xl font-black text-slate-800 tracking-tighter uppercase truncate flex-1">
+              {flows.find(f => f.id === currentFlowId)?.name}
+            </h1>
+          </div>
+
+          <div className="flex-1 space-y-12 overflow-y-auto pr-2 scrollbar-hide">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mb-6">Componentes</p>
+              <div className="grid grid-cols-1 gap-4">
+                {[
+                  { type: NODE_TYPES.AUDIO, label: 'Mensaje Audio', icon: PhoneCall },
+                  { type: NODE_TYPES.CHOICE, label: 'Opciones IVR', icon: Split },
+                  { type: NODE_TYPES.END, label: 'Fin Llamada', icon: LogOut },
+                ].map((item) => {
+                  const theme = getNodeTheme(item.type);
+                  return (
+                    <button key={item.type} onClick={() => addNode(item.type)} className="flex items-center gap-4 p-5 rounded-[2rem] border-2 border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/40 transition-all group text-left shadow-sm">
+                      <div className={cn("p-2.5 rounded-xl transition-all group-hover:bg-indigo-600 group-hover:text-white shadow-sm", theme.light, theme.text)}>
+                        <item.icon size={20} />
+                      </div>
+                      <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                      <Plus size={14} className="ml-auto text-slate-300" />
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="p-6 flex-1">
-              {viewMode === 'list' && (
-                <div className="overflow-x-auto animate-in fade-in duration-300">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-100">
-                        <th className="pb-3 px-2">Empleado</th>
-                        <th className="pb-3">Periodo</th>
-                        <th className="pb-3 text-center">Días Consumidos</th>
-                        <th className="pb-3 text-right pr-2">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {vacations.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan="4"
-                            className="py-20 text-center text-slate-400 text-sm font-medium"
-                          >
-                            No hay vacaciones registradas
-                          </td>
-                        </tr>
-                      ) : (
-                        vacations
-                          .sort(
-                            (a, b) =>
-                              new Date(a.startDate) - new Date(b.startDate)
-                          )
-                          .map((v) => {
-                            const uColor =
-                              users.find((u) => u.id === v.userId)?.color ||
-                              'bg-slate-300';
-                            return (
-                              <tr
-                                key={v.id}
-                                className="hover:bg-slate-50/50 transition-colors group"
-                              >
-                                <td className="py-4 px-2">
-                                  <div className="flex items-center gap-3">
-                                    <span
-                                      className={`w-2.5 h-2.5 rounded-full ${uColor}`}
-                                    />
-                                    <span className="font-medium text-slate-800 text-sm">
-                                      {v.userName}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td className="text-sm text-slate-600">
-                                  {new Date(v.startDate).toLocaleDateString(
-                                    'es-ES',
-                                    { day: '2-digit', month: 'short' }
-                                  )}{' '}
-                                  <span className="text-slate-300 mx-1">→</span>{' '}
-                                  {new Date(v.endDate).toLocaleDateString(
-                                    'es-ES',
-                                    { day: '2-digit', month: 'short' }
-                                  )}
-                                </td>
-                                <td className="text-center">
-                                  <span className="bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-md border border-slate-200">
-                                    {v.days}
-                                  </span>
-                                </td>
-                                <td className="text-right pr-2">
-                                  <button
-                                    onClick={() => removeVaca(v.id)}
-                                    className="text-slate-300 hover:text-rose-600 p-2 rounded-md hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all focus:opacity-100"
-                                  >
-                                    <TrashIcon size={16} />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {viewMode === 'gantt' && (
-                <div className="overflow-x-auto pb-4 scrollbar-hide animate-in fade-in duration-300 border border-slate-200 rounded-xl">
-                  <div className="min-w-[900px] bg-white">
-                    <div className="flex border-b border-slate-200 bg-slate-50">
-                      <div className="w-48 shrink-0 sticky left-0 z-20 bg-slate-50 border-r border-slate-200 p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center">
-                        Miembros
-                      </div>
-                      <div className="flex-1 grid grid-cols-12 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider divide-x divide-slate-200">
-                        {[
-                          'Ene',
-                          'Feb',
-                          'Mar',
-                          'Abr',
-                          'May',
-                          'Jun',
-                          'Jul',
-                          'Ago',
-                          'Sep',
-                          'Oct',
-                          'Nov',
-                          'Dic',
-                        ].map((m) => (
-                          <div key={m} className="py-3">
-                            {m}
-                          </div>
-                        ))}
-                      </div>
+            <AnimatePresence>
+              {activeNodeId && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="pt-10 border-t border-slate-100">
+                  <div className="bg-slate-50 rounded-[2.5rem] p-7 space-y-6 border border-slate-100 shadow-inner">
+                    <div>
+                      <label className="text-[10px] font-black text-slate-400 uppercase block mb-3 tracking-widest">Etiqueta del Nodo</label>
+                      <input 
+                        type="text" 
+                        value={nodes.find(n => n.id === activeNodeId)?.data.label || ''} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNodes(prev => prev.map(n => n.id === activeNodeId ? { ...n, data: { ...n.data, label: val } } : n));
+                          setHasUnsavedChanges(true);
+                        }}
+                        className="w-full bg-white border-2 border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:border-indigo-500 transition-all shadow-sm"
+                      />
                     </div>
-
-                    <div className="divide-y divide-slate-100 relative">
-                      {/* Grid de fondo */}
-                      <div className="absolute inset-0 flex pl-48 pointer-events-none">
-                        <div className="flex-1 grid grid-cols-12 divide-x divide-slate-100/50">
-                          {[...Array(12)].map((_, i) => (
-                            <div key={i} className="h-full" />
-                          ))}
-                        </div>
-                      </div>
-
-                      {users.map((u) => (
-                        <div
-                          key={u.id}
-                          className="flex h-14 items-center group hover:bg-slate-50/50 transition-colors relative z-10"
-                        >
-                          <div className="w-48 shrink-0 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 border-r border-slate-200 p-3 flex items-center gap-3 shadow-[2px_0_5px_rgba(0,0,0,0.02)] transition-colors">
-                            <span
-                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ${u.color}`}
-                            >
-                              {getInitials(u.name)}
-                            </span>
-                            <span className="text-sm font-medium text-slate-800 truncate">
-                              {u.name}
-                            </span>
-                          </div>
-                          <div className="flex-1 h-full relative mx-3">
-                            {vacations
-                              .filter((v) => v.userId === u.id)
-                              .map((v) => {
-                                const start = new Date(v.startDate);
-                                const end = new Date(v.endDate);
-                                const totalMs =
-                                  new Date(2026, 11, 31) - new Date(2026, 0, 1);
-                                const left =
-                                  ((start - new Date(2026, 0, 1)) / totalMs) *
-                                  100;
-                                const width =
-                                  ((end - start) / totalMs) * 100 + 0.5;
-                                return (
-                                  <div
-                                    key={v.id}
-                                    className={`absolute top-1/2 -translate-y-1/2 h-6 ${u.color} rounded-md shadow-sm cursor-help hover:brightness-110 transition-all z-10 border border-black/10`}
-                                    style={{
-                                      left: `${left}%`,
-                                      width: `${width}%`,
-                                    }}
-                                    title={`${v.userName}: ${new Date(
-                                      v.startDate
-                                    ).toLocaleDateString()} al ${new Date(
-                                      v.endDate
-                                    ).toLocaleDateString()}`}
-                                  />
-                                );
-                              })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <button onClick={deleteSelection} className="w-full p-4 text-rose-500 bg-white border-2 border-rose-100 hover:bg-rose-50 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm">
+                      Eliminar Bloque
+                    </button>
                   </div>
-                </div>
+                </motion.div>
               )}
+            </AnimatePresence>
+          </div>
 
-              {viewMode === 'calendar' && renderCalendarView()}
+          <div className="pt-8 border-t border-slate-100 mt-auto flex flex-col gap-5">
+            <div className="flex items-center justify-between px-3">
+               {forcedOffline ? (
+                 <span className="flex items-center gap-1.5 text-[10px] font-bold text-rose-600 bg-rose-50 px-4 py-2 rounded-full uppercase border border-rose-200"><WifiOff size={12} /> Offline Forzado</span>
+               ) : cloudActive ? (
+                <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full uppercase border border-emerald-100"><Cloud size={12} /> Conectado</span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 px-4 py-2 rounded-full uppercase border border-amber-100"><CloudOff size={12} /> Local</span>
+              )}
+              <span className="text-[10px] font-black text-slate-300 uppercase">{nodes.length} Nodos</span>
             </div>
-          </section>
+            <button 
+              onClick={syncToCloud} 
+              disabled={isSyncing || (!cloudActive && !forcedOffline)}
+              className={cn(
+                  "w-full text-white p-6 rounded-[2rem] font-black text-[10px] uppercase tracking-[0.4em] shadow-2xl flex items-center justify-center gap-3 transition-all",
+                  isSyncing ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:bg-slate-800 active:scale-95",
+                  hasUnsavedChanges && !isSyncing ? "ring-4 ring-indigo-200" : ""
+              )}
+            >
+              {isSyncing ? <Loader2 size={18} className="animate-spin" /> : cloudActive ? <UploadCloud size={18} /> : <Save size={18} />} 
+              {isSyncing ? 'Sincronizando...' : cloudActive ? 'Guardar en Nube' : 'Guardar Local'}
+            </button>
+          </div>
+        </div>
+      </motion.aside>
+
+      <main 
+        ref={canvasRef} 
+        className="flex-1 relative overflow-hidden bg-[#f1f5f9] cursor-default"
+        onPointerDown={(e) => {
+            if (e.target === canvasRef.current || e.target.tagName === 'svg' || e.target.tagName === 'path') {
+                setActiveNodeId(null);
+            }
+        }}
+      >
+        <div className="absolute inset-0 pointer-events-none opacity-[0.6]" 
+          style={{ backgroundImage: 'radial-gradient(#cbd5e1 2px, transparent 2px)', backgroundSize: '40px 40px' }} 
+        />
+
+        <div className="absolute top-12 left-12 z-20 pointer-events-none flex items-center gap-4">
+          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="bg-white p-5 rounded-[1.5rem] shadow-2xl border border-slate-200 hover:bg-slate-50 transition-all pointer-events-auto shadow-indigo-100">
+            <MousePointer2 size={26} className={cn(sidebarOpen ? 'text-indigo-600' : 'text-slate-400')} />
+          </button>
+          
+          <button 
+            onClick={toggleOfflineMode}
+            className={cn(
+                "p-5 rounded-[1.5rem] shadow-2xl border transition-all pointer-events-auto",
+                forcedOffline 
+                    ? "bg-rose-50 text-rose-600 border-rose-200 shadow-rose-100 hover:bg-rose-100" 
+                    : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50 hover:text-slate-600"
+            )}
+            title={forcedOffline ? "Reconectar a la nube" : "Forzar modo offline"}
+          >
+            {forcedOffline ? <WifiOff size={26} /> : <CloudOff size={26} />}
+          </button>
+
+          {hasUnsavedChanges && (
+              <div className="bg-amber-100 text-amber-700 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest border border-amber-200 animate-pulse">
+                  Cambios sin guardar
+              </div>
+          )}
+        </div>
+
+        {/* CONTENEDOR GRÁFICO (Cables) */}
+        <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#cbd5e1" />
+            </marker>
+            {/* Markers coloreados por tipo de nodo origen */}
+            <marker id="arrow-start" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#10b981" /></marker>
+            <marker id="arrow-audio" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6" /></marker>
+            <marker id="arrow-choice" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#a855f7" /></marker>
+          </defs>
+          
+          {/* Cable en creación */}
+          {connectingNode && (
+             <path 
+                d={`M ${nodes.find(n => n.id === connectingNode)?.x + 125} ${nodes.find(n => n.id === connectingNode)?.y + 110} 
+                    C ${nodes.find(n => n.id === connectingNode)?.x + 125} ${nodes.find(n => n.id === connectingNode)?.y + 200}, 
+                      ${mousePos.x} ${mousePos.y - 100}, 
+                      ${mousePos.x} ${mousePos.y}`}
+                fill="none" 
+                stroke="#6366f1" 
+                strokeWidth="4" 
+                strokeDasharray="8,8"
+                className="animate-pulse"
+              />
+          )}
+
+          {/* Cables Establecidos */}
+          {connections.map((conn) => {
+            const from = nodes.find(n => n.id === conn.from);
+            const to = nodes.find(n => n.id === conn.to);
+            if (!from || !to) return null;
+            
+            // Puntos de anclaje refinados (centro inferior origen -> centro superior destino)
+            const x1 = from.x + 125; 
+            const y1 = from.y + 110; 
+            const x2 = to.x + 125; 
+            const y2 = to.y - 10;
+            
+            const theme = getNodeTheme(from.type);
+
+            return (
+              <path 
+                key={conn.id} 
+                d={`M ${x1} ${y1} C ${x1} ${y1 + 80}, ${x2} ${y2 - 80}, ${x2} ${y2}`} 
+                fill="none" 
+                stroke={theme.stroke} 
+                strokeWidth="4" 
+                strokeLinecap="round" 
+                markerEnd={`url(#arrow-${from.type})`} 
+                className="opacity-70 drop-shadow-md transition-all duration-300"
+              />
+            );
+          })}
+        </svg>
+
+        {/* CONTENEDOR DE NODOS */}
+        <div className="absolute inset-0 w-full h-full overflow-visible pointer-events-none">
+            <AnimatePresence>
+            {nodes.map((node) => {
+                const theme = getNodeTheme(node.type);
+                const Icon = getIconForType(node.type);
+                const isActive = activeNodeId === node.id;
+                
+                return (
+                <motion.div
+                    key={node.id}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    style={{ 
+                        position: 'absolute',
+                        left: node.x, 
+                        top: node.y,
+                        touchAction: 'none' 
+                    }}
+                    onPointerDown={(e) => handlePointerDown(e, node.id)}
+                    className={cn(
+                    "w-[250px] bg-white/95 backdrop-blur-xl rounded-[2.5rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.15)] border-[3px] pointer-events-auto transition-shadow will-change-transform group",
+                    isActive ? "border-indigo-500 shadow-indigo-200/50 ring-8 ring-indigo-50 z-20" : "border-white z-10 hover:border-slate-100 hover:shadow-2xl"
+                    )}
+                >
+                    <div className="p-7">
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className={cn("p-3 rounded-2xl text-white shadow-xl flex items-center justify-center transition-transform group-hover:scale-110", theme.bg)}>
+                        <Icon size={22} strokeWidth={2.5} />
+                        </div>
+                        <span className="text-[11px] font-black uppercase text-slate-400 tracking-[0.25em]">{node.type}</span>
+                    </div>
+                    <h3 className="text-lg font-black text-slate-800 truncate leading-tight tracking-tight px-1">{node.data.label}</h3>
+                    </div>
+
+                    {/* PUERTO DE ENTRADA (Superior) */}
+                    {node.type !== NODE_TYPES.START && (
+                    <div 
+                        onPointerUp={(e) => finalizeConnection(e, node.id)}
+                        className="absolute -top-5 left-1/2 -translate-x-1/2 w-10 h-10 bg-slate-50 border-[6px] border-white rounded-full shadow-inner flex items-center justify-center hover:scale-125 transition-transform"
+                    >
+                        <div className="w-3 h-3 bg-slate-300 rounded-full" />
+                    </div>
+                    )}
+                    
+                    {/* PUERTO DE SALIDA (Inferior) */}
+                    {node.type !== NODE_TYPES.END && (
+                    <div 
+                        onPointerDown={(e) => startConnection(e, node.id)}
+                        className={cn(
+                        "absolute -bottom-5 left-1/2 -translate-x-1/2 w-10 h-10 border-[6px] border-white rounded-full cursor-crosshair hover:scale-125 transition-all shadow-xl flex items-center justify-center z-30",
+                        connectingNode === node.id ? "bg-amber-400 animate-pulse scale-125 ring-4 ring-amber-100" : theme.bg
+                        )}
+                    >
+                        <ChevronRight size={20} className="text-white" strokeWidth={3} />
+                    </div>
+                    )}
+                </motion.div>
+                );
+            })}
+            </AnimatePresence>
         </div>
       </main>
     </div>
